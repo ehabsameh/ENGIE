@@ -1,0 +1,111 @@
+---
+title: "Coordinate Matching"
+author: "Jadin Stewart"
+date: "2023-01-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+```{r libraries}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(geosphere)
+library(nngeo)
+library(maps)
+library(usmap)
+library(data.table)
+library(sf)
+library(ggplot2)
+library(plotly)
+```
+
+# Bus Station Latitude and Longitude
+```{r}
+BusStation <- read_csv("MISO_Bus_LatLong_miso_se_20230110-1800_AREVA.txt")
+BusStation$Latitude <- BusStation$latitude
+BusStation$Longitude <- BusStation$longitude
+BusStation <- subset(BusStation, select = -c(longitude, latitude))
+```
+
+# Proposed Project Latitude and Longitude
+```{r}
+ProposedProjects <- read_excel("Prism_RenewableStack_All_ISOs.xlsx")
+ProposedProjects <- subset(ProposedProjects, (ISO == "MISO"))
+ProposedProjects$`Project #` <- str_extract(ProposedProjects$ProjectName,"(?<=-[:space:])[:graph:]*")
+ProposedProjects$ProjectID2 <- str_extract(ProposedProjects$ProjectName, "(?<=-)[:graph:]*")
+ProposedProjects$`Project #` <- ifelse(is.na(ProposedProjects$`Project #`) == TRUE, ProposedProjects$ProjectID2, ProposedProjects$`Project #`)
+ProposedProjects <- subset(ProposedProjects, select=c(ProjectName,`Project #`,Latitude,Longitude,ENVProjectID))
+```
+
+# Proposed Projects Missing a Project #
+```{r}
+ProposedProjectsMissing <- subset(ProposedProjects, is.na(`Project #`) == TRUE)
+```
+
+# Number of Projects without Project #s
+```{r}
+sum(is.na(ProposedProjects$`Project #`))
+```
+
+# Importing GI Data
+```{r}
+GI_Interactive_Queue <- read_csv("GI Interactive Queue.csv")
+```
+
+# Subsetting the Additional Information Data Frame for Only Active Projects
+```{r}
+GI_Interactive_Queue_Active <- subset(GI_Interactive_Queue, `Request Status` == "Active")
+```
+
+# Merging the Two Proposed Project Data Frames
+```{r}
+my_merge <- merge(ProposedProjects, GI_Interactive_Queue_Active, by="Project #")
+```
+
+# Number of Unique Proposed Projects with a Project 3
+```{r}
+total_data <- unique(my_merge$`Project #`)
+```
+
+# Map
+```{r}
+transformed <- usmap_transform(my_merge, input_names=c("Longitude", "Latitude"))
+
+plot_usmap(include = c("AR","IL","IN", "IA","KY","LA","MI","MN","MS","MO","MT","ND","SD","WI","TX")) +
+  geom_point(data=transformed, aes(x=x, y = y), color="red", size=0.5)
+```
+
+# Distance using nngeo
+```{r}
+Proposed_Projects_sf = st_as_sf(my_merge, coords = c("Longitude", "Latitude"), crs = 4326, agr = "constant")
+
+BusStation_df = st_as_sf(BusStation, coords = c("Longitude", "Latitude"), crs = 4326, agr = "constant")
+
+nn = st_nn(Proposed_Projects_sf, BusStation_df, k = 4, progress = FALSE)
+
+MISO_projects_bus <- data.frame(nn)
+write_csv(MISO_projects_bus, "MISO_projects_bus_4.csv")
+
+
+l = st_connect(Proposed_Projects_sf, BusStation_df, ids = nn, progress = FALSE)
+```
+
+# Mapped Distances
+```{r}
+p <- ggplot() +
+  geom_sf(data = l, colour = "black") +
+  geom_sf(data = st_geometry(BusStation_df), colour = "darkgrey", fill = NA, aes(label=BusStation_df$bus_id)) +
+  geom_sf(data = st_geometry(Proposed_Projects_sf), colour = "red", fill = NA, aes(label=Proposed_Projects_sf$ProjectName)) 
+ggplotly(p)
+```
+
+
+
+
+
+
