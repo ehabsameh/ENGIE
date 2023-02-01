@@ -91,7 +91,6 @@ nn = st_nn(Proposed_Projects_sf, BusStation_df, k = 4, progress = FALSE)
 MISO_projects_bus <- data.frame(nn)
 write_csv(MISO_projects_bus, "MISO_projects_bus_4.csv")
 
-
 l = st_connect(Proposed_Projects_sf, BusStation_df, ids = nn, progress = FALSE)
 ```
 
